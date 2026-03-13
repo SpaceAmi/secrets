@@ -11,14 +11,14 @@
         </div>
         <p class="error-message">The decryption key is missing from the URL. This can happen when sharing links through apps that strip URL fragments.</p>
         <p class="error-message">Please ask the sender to share the complete link including the # portion.</p>
-        <a href="/" class="main-btn" hx-boost="false">Back to Main Page</a>
+        <a href="/safesecret" class="main-btn" hx-boost="false">Back to Main Page</a>
     </div>
 
     {{/* client-side decryption form - shown when URL has #key */}}
     <div id="client-decrypt-form" class="card load-msg-form" style="display:none;">
         <div class="card-header">
-            <h2 class="card-title">{{if .HasPin}}Decrypt Secret{{else}}Reveal Secret{{end}}</h2>
-            <p class="card-description">{{if .HasPin}}Enter your {{.PinSize}}-digit PIN to decrypt the secret{{else}}Click below to reveal and decrypt the secret{{end}}</p>
+            <h2 class="card-title">{{if .IsFile}}{{if .HasPin}}Decrypt File{{else}}Download File{{end}}{{else}}{{if .HasPin}}Decrypt Secret{{else}}Reveal Secret{{end}}{{end}}</h2>
+            <p class="card-description">{{if .IsFile}}{{if .HasPin}}Enter your {{.PinSize}}-digit PIN to decrypt the file{{else}}Click below to get your file{{end}}{{else}}{{if .HasPin}}Enter your {{.PinSize}}-digit PIN to decrypt the secret{{else}}Click below to reveal and decrypt the secret{{end}}{{end}}</p>
         </div>
 
         <form id="decrypt-form" hx-boost="false">
@@ -53,7 +53,11 @@
             <button class="main-btn" type="submit" id="decrypt-btn">
                 <span class="button-text" id="btn-text">
                     <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        {{if .HasPin}}
+                        {{if and .IsFile (not .HasPin)}}
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="currentColor" stroke-width="2"/>
+                        <polyline points="7 10 12 15 17 10" stroke="currentColor" stroke-width="2"/>
+                        <line x1="12" y1="15" x2="12" y2="3" stroke="currentColor" stroke-width="2"/>
+                        {{else if .HasPin}}
                         <rect x="3" y="11" width="18" height="11" rx="2" ry="2" stroke="currentColor" stroke-width="2"/>
                         <circle cx="12" cy="16" r="1" fill="currentColor"/>
                         <path d="M7 11V7a5 5 0 0 1 10 0v4" stroke="currentColor" stroke-width="2"/>
@@ -62,9 +66,9 @@
                         <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
                         {{end}}
                     </svg>
-                    {{if .HasPin}}Decrypt{{else}}Reveal Secret{{end}}
+                    <span id="btn-label">{{if and .IsFile (not .HasPin)}}Download File{{else if .HasPin}}Decrypt{{else}}Reveal Secret{{end}}</span>
                 </span>
-                <span class="button-text" id="btn-loading" style="display:none;">{{if .HasPin}}Decrypting{{else}}Revealing{{end}}...</span>
+                <span class="button-text" id="btn-loading" style="display:none;"><span id="btn-loading-label">{{if and .IsFile (not .HasPin)}}Downloading{{else if .HasPin}}Decrypting{{else}}Revealing{{end}}</span>...</span>
             </button>
         </form>
     </div>
@@ -129,7 +133,7 @@
                 <p class="card-description">{{if .HasPin}}Enter your {{.PinSize}}-digit PIN to decrypt and view the message{{else}}Click below to reveal the secret message{{end}}</p>
             </div>
 
-            <form hx-post="/load-message"
+            <form hx-post="/safesecret/load-message"
                   hx-target="#message-container"
                   hx-swap="innerHTML"
                   hx-indicator="#decrypt-spinner"

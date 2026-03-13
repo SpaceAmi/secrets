@@ -349,7 +349,7 @@ func TestMessageProc_LoadMessage(t *testing.T) {
 	assert.Contains(t, r.PinHash, "$2a$")
 
 	assert.Len(t, s.LoadCalls(), 1)
-	assert.Len(t, s.RemoveCalls(), 1)
+	assert.Empty(t, s.RemoveCalls())
 	assert.Empty(t, s.IncErrCalls())
 	assert.Len(t, c.DecryptCalls(), 1)
 }
@@ -375,7 +375,7 @@ func TestMessageProc_LoadMessage_NoPinMessage(t *testing.T) {
 	assert.Equal(t, "client-encrypted-blob", string(r.Data))
 	assert.Empty(t, r.PinHash)
 	assert.Len(t, s.LoadCalls(), 1)
-	assert.Len(t, s.RemoveCalls(), 1)
+	assert.Empty(t, s.RemoveCalls())
 	assert.Empty(t, c.DecryptCalls(), "no decryption for client-enc")
 }
 
@@ -514,7 +514,7 @@ func TestMessageProc_LoadFileMessage(t *testing.T) {
 	assert.Equal(t, "file binary content", string(r.Data[dataStart:]))
 
 	assert.Len(t, s.LoadCalls(), 1)
-	assert.Len(t, s.RemoveCalls(), 1)
+	assert.Empty(t, s.RemoveCalls())
 	assert.Len(t, c.DecryptCalls(), 1)
 }
 
@@ -738,7 +738,7 @@ func TestMessageProc_LoadMessage_ClientEnc(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "client-encrypted-blob", string(r.Data), "data should be returned as-is")
 	assert.Len(t, s.LoadCalls(), 1)
-	assert.Len(t, s.RemoveCalls(), 1, "message should still be removed after access")
+	assert.Empty(t, s.RemoveCalls(), "message should be retained until expiration")
 	assert.Empty(t, c.DecryptCalls(), "decrypt should not be called")
 }
 
@@ -767,6 +767,6 @@ func TestMessageProc_LoadMessage_ServerEnc(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "decrypted plaintext", string(r.Data), "data should be decrypted")
 	assert.Len(t, s.LoadCalls(), 1)
-	assert.Len(t, s.RemoveCalls(), 1)
+	assert.Empty(t, s.RemoveCalls())
 	assert.Len(t, c.DecryptCalls(), 1, "decrypt should be called")
 }

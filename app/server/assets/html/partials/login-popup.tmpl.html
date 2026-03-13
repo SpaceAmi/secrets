@@ -3,14 +3,14 @@
     <div class="popup-content login-popup">
         <div class="popup-header">
             <span class="popup-title">Login Required</span>
-            <button hx-get="/close-popup"
+            <button hx-get="/safesecret/close-popup"
                     hx-target="#popup"
                     hx-swap="outerHTML"
                     class="close-popup">
-                <img src="/static/img/close.svg" alt="close" />
+                <img src="/safesecret/static/img/close.svg" alt="close" />
             </button>
         </div>
-        <form hx-post="/login"
+        <form hx-post="/safesecret/login"
               hx-target="#popup"
               hx-swap="outerHTML"
               class="login-form">

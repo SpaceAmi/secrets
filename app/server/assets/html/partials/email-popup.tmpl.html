@@ -10,7 +10,7 @@
                 Send via Email
             </h2>
         </div>
-        <form hx-post="/send-email"
+        <form hx-post="/safesecret/send-email"
               hx-target="#popup"
               hx-swap="outerHTML"
               class="email-form">
@@ -52,7 +52,7 @@
 
             <div class="form-actions">
                 <button type="button"
-                        hx-get="/close-popup"
+                        hx-get="/safesecret/close-popup"
                         hx-target="#popup"
                         hx-swap="outerHTML"
                         class="second-btn">Cancel</button>

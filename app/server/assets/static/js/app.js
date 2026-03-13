@@ -41,14 +41,14 @@ function setupAutofocusObserver() {
 function setupPopupHandlers() {
     // handle closePopup custom event
     document.body.addEventListener('closePopup', function() {
-        htmx.ajax('GET', '/close-popup', {target: '#popup', swap: 'outerHTML'});
+        htmx.ajax('GET', '/safesecret/close-popup', {target: '#popup', swap: 'outerHTML'});
     });
 
     // handle backdrop clicks on popup (except email popup)
     document.body.addEventListener('click', function(evt) {
         const popup = evt.target.closest('#popup');
         if (popup && evt.target === popup && !popup.querySelector('.email-popup')) {
-            htmx.ajax('GET', '/close-popup', {target: '#popup', swap: 'outerHTML'});
+            htmx.ajax('GET', '/safesecret/close-popup', {target: '#popup', swap: 'outerHTML'});
         }
     });
 }
@@ -224,6 +224,10 @@ function switchTab(mode) {
     const textInput = document.getElementById('text-input-container');
     const fileInput = document.getElementById('file-input-container');
     const messageTextarea = document.getElementById('message');
+    const pinInput = document.getElementById('pin');
+    const isFileField = document.getElementById('is-file');
+    const fileNameField = document.getElementById('file-name');
+    const fileSizeField = document.getElementById('file-size');
 
     if (!form || !textTab || !fileTab) return;
 
@@ -238,6 +242,8 @@ function switchTab(mode) {
             fileInput.style.display = 'block';
             initDragDrop();
         }
+        if (pinInput) pinInput.removeAttribute('required');
+        if (isFileField) isFileField.value = '1';
     } else {
         fileTab.classList.remove('active');
         textTab.classList.add('active');
@@ -246,6 +252,9 @@ function switchTab(mode) {
         // clear actual file input to prevent wrong payload when switching to text mode
         const actualFileInput = document.getElementById('file');
         if (actualFileInput) actualFileInput.value = '';
+        if (isFileField) isFileField.value = '0';
+        if (fileNameField) fileNameField.value = '';
+        if (fileSizeField) fileSizeField.value = '';
         // reset file-info display and error state
         const fileInfo = document.getElementById('file-info');
         if (fileInfo) {
@@ -262,6 +271,9 @@ function switchTab(mode) {
         if (textInput) textInput.style.display = 'block';
         // restore required on textarea for text mode
         if (messageTextarea) messageTextarea.setAttribute('required', '');
+        if (pinInput && pinInput.dataset.requiredDefault === '1') {
+            pinInput.setAttribute('required', '');
+        }
     }
 }
 
@@ -312,6 +324,8 @@ function initDragDrop() {
 
     function updateFileInfo(file) {
         if (!fileInfo) return;
+        const fileNameField = document.getElementById('file-name');
+        const fileSizeField = document.getElementById('file-size');
 
         const sizeStr = formatSize(file.size);
         const placeholder = dropZone.querySelector('svg');
@@ -327,6 +341,8 @@ function initDragDrop() {
             if (fileInput) fileInput.value = '';
             if (placeholder) placeholder.style.display = 'none';
             if (placeholderText) placeholderText.style.display = 'none';
+            if (fileNameField) fileNameField.value = '';
+            if (fileSizeField) fileSizeField.value = '';
         } else {
             fileInfo.textContent = file.name + ' (' + sizeStr + ')';
             fileInfo.style.display = 'block';
@@ -335,6 +351,8 @@ function initDragDrop() {
             if (submitBtn) submitBtn.disabled = false;
             if (placeholder) placeholder.style.display = 'none';
             if (placeholderText) placeholderText.style.display = 'none';
+            if (fileNameField) fileNameField.value = file.name;
+            if (fileSizeField) fileSizeField.value = String(file.size);
         }
     }
 }
@@ -346,6 +364,8 @@ function initDragDrop() {
 // encryption state encapsulated in object to prevent global pollution
 var encryptionState = {
     key: null,
+    isFile: false,
+    fileName: '',
     done: false,
     pendingForm: null,
     pendingEvent: null,
@@ -435,8 +455,10 @@ async function doClientEncryption(form) {
     const pinInput = document.getElementById('pin');
     const pinValue = pinInput ? pinInput.value.trim() : '';
     const noPinModal = document.getElementById('no-pin-modal');
+    const fileInput = document.getElementById('file');
+    const isFileUpload = fileInput && fileInput.files.length > 0;
 
-    if (pinValue === '' && noPinModal && !encryptionState.noPinConfirmed) {
+    if (!isFileUpload && pinValue === '' && noPinModal && !encryptionState.noPinConfirmed) {
         encryptionState.pendingForm = form;
         noPinModal.classList.add('active');
         return;
@@ -456,12 +478,15 @@ async function doEncryptionWork(form) {
 
         const fileInput = document.getElementById('file');
         const isFileUpload = fileInput && fileInput.files.length > 0;
+        encryptionState.isFile = !!isFileUpload;
+        encryptionState.fileName = '';
 
         let encryptedBlob;
         let messageEl = document.getElementById('message');
 
         if (isFileUpload) {
             const file = fileInput.files[0];
+            encryptionState.fileName = file.name || '';
             if (file.size > config.maxFileSize) {
                 showEncryptionError('File too large. Maximum size: ' + formatSize(config.maxFileSize));
                 return;
@@ -476,6 +501,12 @@ async function doEncryptionWork(form) {
                 messageEl.id = 'message';
                 form.appendChild(messageEl);
             }
+            const isFileField = document.getElementById('is-file');
+            const fileNameField = document.getElementById('file-name');
+            const fileSizeField = document.getElementById('file-size');
+            if (isFileField) isFileField.value = '1';
+            if (fileNameField) fileNameField.value = file.name;
+            if (fileSizeField) fileSizeField.value = String(file.size);
             fileInput.remove();
             form.removeAttribute('enctype');
         } else {
@@ -490,6 +521,12 @@ async function doEncryptionWork(form) {
                 return;
             }
             encryptedBlob = await encrypt(message, encryptionState.key);
+            const isFileField = document.getElementById('is-file');
+            const fileNameField = document.getElementById('file-name');
+            const fileSizeField = document.getElementById('file-size');
+            if (isFileField) isFileField.value = '0';
+            if (fileNameField) fileNameField.value = '';
+            if (fileSizeField) fileSizeField.value = '';
         }
 
         messageEl.value = encryptedBlob;
@@ -509,17 +546,29 @@ function handleAfterSwap(evt) {
     if (!encryptionState.key) return;
 
     const textarea = document.getElementById('msg-text');
-    if (textarea && textarea.value.includes('/message/')) {
-        const fullUrl = textarea.value + '#' + encryptionState.key;
+    if (textarea && textarea.value) {
+        let hashFragment = encryptionState.key;
+        if (encryptionState.isFile) {
+            const hashParams = new URLSearchParams();
+            hashParams.set('k', encryptionState.key);
+            hashParams.set('f', '1');
+            if (encryptionState.fileName) {
+                hashParams.set('n', encryptionState.fileName);
+            }
+            hashFragment = hashParams.toString();
+        }
+        const fullUrl = textarea.value + '#' + hashFragment;
         textarea.value = fullUrl;
 
-        const emailBtn = document.querySelector('button[hx-get^="/email-popup"]');
+        const emailBtn = document.querySelector('button[hx-get^="/safesecret/email-popup"]');
         if (emailBtn) {
-            emailBtn.setAttribute('hx-get', '/email-popup?link=' + encodeURIComponent(fullUrl));
+            emailBtn.setAttribute('hx-get', '/safesecret/email-popup?link=' + encodeURIComponent(fullUrl));
             htmx.process(emailBtn);
         }
 
         encryptionState.key = null;
+        encryptionState.isFile = false;
+        encryptionState.fileName = '';
         encryptionState.done = false;
     } else if (evt.detail.target && evt.detail.target.id === 'form-card') {
         clearFormFields();
@@ -539,6 +588,8 @@ function clearFormFields() {
     const fileField = document.getElementById('file');
     if (fileField) fileField.value = '';
     encryptionState.key = null;
+    encryptionState.isFile = false;
+    encryptionState.fileName = '';
     encryptionState.done = false;
     encryptionState.noPinConfirmed = false;
     encryptionState.pendingForm = null;
@@ -556,11 +607,46 @@ function showEncryptionError(msg) {
 // decryption handlers (from show-message.tmpl.html)
 // ============================================================================
 
+function parseHashState(hash) {
+    const raw = hash ? hash.replace(/^#/, '') : '';
+    if (!raw) {
+        return { key: '', isFileHint: false, fileName: '' };
+    }
+
+    if (raw.includes('=')) {
+        const params = new URLSearchParams(raw);
+        const key = params.get('k') || params.get('key') || '';
+        const isFileHint = params.get('f') === '1' || params.get('type') === 'file';
+        const fileName = params.get('n') || '';
+        if (key) {
+            return { key: key, isFileHint: isFileHint, fileName: fileName };
+        }
+    }
+
+    return { key: raw, isFileHint: false, fileName: '' };
+}
+
+function applyClientFileNoPinLabels(fileName) {
+    const form = document.getElementById('client-decrypt-form');
+    if (!form) return;
+
+    const title = form.querySelector('.card-title');
+    const description = form.querySelector('.card-description');
+    const btnLabel = document.getElementById('btn-label');
+    const loadingLabel = document.getElementById('btn-loading-label');
+
+    if (title) title.textContent = fileName || 'Download File';
+    if (description) description.textContent = 'Click below to get your file';
+    if (btnLabel) btnLabel.textContent = 'Download File';
+    if (loadingLabel) loadingLabel.textContent = 'Downloading';
+}
+
 function setupDecryptionHandlers() {
     const showMsg = document.getElementById('show-msg');
     if (!showMsg) return; // not on show-message page
 
-    const cryptoKey = window.location.hash.slice(1);
+    const hashState = parseHashState(window.location.hash);
+    const cryptoKey = hashState.key;
     const hasKey = cryptoKey && cryptoKey.length > 0;
 
     const keyError = document.getElementById('key-error');
@@ -575,14 +661,16 @@ function setupDecryptionHandlers() {
             document.getElementById('message-container').innerHTML =
                 '<div class="card error-card"><div class="card-header">' +
                 '<h2 class="card-title">Encryption Unavailable</h2></div>' +
-                '<p class="error-message">Web Crypto API is not available. HTTPS is required for encrypted messages.</p>' +
-                '<a href="/" class="main-btn">Back to Main Page</a></div>';
+                '<p class="error-message">Web Crypto API is not available. HTTPS is required for encrypted messages.</p></div>';
             return;
         }
 
         if (clientForm) {
             clientForm.style.display = 'block';
             const clientPin = document.getElementById('client-pin');
+            if (hashState.isFileHint && clientPin && clientPin.getAttribute('type') === 'hidden') {
+                applyClientFileNoPinLabels(hashState.fileName);
+            }
             if (clientPin) clientPin.focus();
         }
 
@@ -625,8 +713,7 @@ function showErrorCard(title, message) {
     document.getElementById('message-container').innerHTML =
         '<div class="card error-card"><div class="card-header">' +
         '<h2 class="card-title">' + escapeHtml(title) + '</h2></div>' +
-        '<p class="error-message">' + escapeHtml(message) + '</p>' +
-        '<a href="/" class="main-btn">Back to Main Page</a></div>';
+        '<p class="error-message">' + escapeHtml(message) + '</p></div>';
 }
 
 function showSuccessCard(title, message) {
@@ -634,7 +721,13 @@ function showSuccessCard(title, message) {
         '<div class="card success-card"><div class="card-header">' +
         '<h2 class="card-title">' + escapeHtml(title) + '</h2></div>' +
         '<p class="success-message">' + message + '</p>' +
-        '<a href="/" class="main-btn">Create New Secret</a></div>';
+        '<a href="/safesecret" class="main-btn">Create New Secret</a></div>';
+}
+
+function showSimpleSuccessCard(title) {
+    document.getElementById('message-container').innerHTML =
+        '<div class="card success-card"><div class="card-header">' +
+        '<h2 class="card-title">' + escapeHtml(title) + '</h2></div></div>';
 }
 
 async function handleClientDecryption(cryptoKey) {
@@ -650,7 +743,7 @@ async function handleClientDecryption(cryptoKey) {
 
     try {
         const formData = new URLSearchParams(new FormData(form));
-        const resp = await fetch('/load-message', {
+        const resp = await fetch('/safesecret/load-message', {
             method: 'POST',
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
             body: formData
@@ -667,28 +760,41 @@ async function handleClientDecryption(cryptoKey) {
                 document.getElementById('message-container').innerHTML =
                     '<div class="card decoded-message">' +
                     '<div class="card-header"><h2 class="card-title">Decrypted Message</h2>' +
-                    '<p class="card-description">This message has been permanently deleted from the server.</p></div>' +
+                    '<p class="card-description">This message is available until it expires.</p></div>' +
                     '<div class="form-group"><textarea id="decoded-msg-text" readonly class="message-output">' +
                     escapeHtml(result.text) + '</textarea></div>' +
                     '<div class="form-row two-cols">' +
                     '<button type="button" class="main-btn" data-action="copy-message">Copy</button>' +
-                    '<a href="/" class="second-btn">New Secret</a></div></div>';
+                    '<a href="/safesecret" class="second-btn">New Secret</a></div></div>';
             } else if (result.type === 'file') {
                 const blob = new Blob([result.data], { type: result.contentType });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = result.filename;
-                a.click();
-                URL.revokeObjectURL(url);
+                const downloadUrl = URL.createObjectURL(blob);
+                const noPinClientDecrypt = pinInput && pinInput.getAttribute('type') === 'hidden';
+                if (noPinClientDecrypt) {
+                    const a = document.createElement('a');
+                    a.href = downloadUrl;
+                    a.download = result.filename || 'download';
+                    a.click();
+                    URL.revokeObjectURL(downloadUrl);
+                    showSimpleSuccessCard('File Downloaded');
+                } else {
+                    document.getElementById('message-container').innerHTML =
+                        '<div class="card load-msg-form"><div class="card-header">' +
+                        '<h2 class="card-title">File Ready</h2>' +
+                        '<p class="card-description">Click below to get your file</p></div>' +
+                        '<button type="button" class="main-btn" id="download-revealed-file">Download File</button></div>';
 
-                document.getElementById('message-container').innerHTML =
-                    '<div class="card success-card"><div class="card-header">' +
-                    '<h2 class="card-title">File Downloaded</h2></div>' +
-                    '<p class="success-message">The file "<span id="downloaded-filename"></span>" has been decrypted and downloaded. ' +
-                    'It has been permanently deleted from the server.</p>' +
-                    '<a href="/" class="main-btn">Create New Secret</a></div>';
-                document.getElementById('downloaded-filename').textContent = result.filename;
+                    const downloadBtn = document.getElementById('download-revealed-file');
+                    if (downloadBtn) {
+                        downloadBtn.addEventListener('click', function() {
+                            const a = document.createElement('a');
+                            a.href = downloadUrl;
+                            a.download = result.filename || 'download';
+                            a.click();
+                            URL.revokeObjectURL(downloadUrl);
+                        }, { once: true });
+                    }
+                }
             }
         } else {
             const html = await resp.text();
@@ -729,7 +835,7 @@ async function handleFileDownload() {
 
     try {
         const formData = new URLSearchParams(new FormData(form));
-        const resp = await fetch('/load-message', {
+        const resp = await fetch('/safesecret/load-message', {
             method: 'POST',
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
             body: formData
@@ -748,7 +854,7 @@ async function handleFileDownload() {
             a.click();
             URL.revokeObjectURL(url);
 
-            showSuccessCard('File Downloaded', 'The file has been decrypted, downloaded, and permanently deleted from the server.');
+            showSimpleSuccessCard('File Downloaded');
         } else {
             const html = await resp.text();
             const parser = new DOMParser();

@@ -18,7 +18,7 @@
 
     <form id="secret-form"
           data-max-file-size="{{.MaxFileSize}}"
-          hx-post="/generate-link"
+          hx-post="/safesecret/generate-link"
           hx-target="#form-card"
           hx-swap="outerHTML"
           hx-indicator="#form-spinner"
@@ -27,16 +27,20 @@
           hx-target-500="#notifications"
           hx-trigger="submit, submitSecretForm from:body">
 
-        <div id="content-input">
-            <div id="text-input-container">
-                {{template "text-input" .}}
-            </div>
-            {{if .FilesEnabled}}
-            <div id="file-input-container" style="display: none;">
-                {{template "file-input" .}}
-            </div>
-            {{end}}
-        </div>
+	        <div id="content-input">
+	            <div id="text-input-container">
+	                {{template "text-input" .}}
+	            </div>
+	            {{if .FilesEnabled}}
+	            <div id="file-input-container" style="display: none;">
+	                {{template "file-input" .}}
+	            </div>
+	            {{end}}
+	        </div>
+
+	        <input type="hidden" name="isFile" id="is-file" value="0" />
+	        <input type="hidden" name="fileName" id="file-name" value="" />
+	        <input type="hidden" name="fileSize" id="file-size" value="" />
 
         <div class="form-row two-cols">
             <div class="form-group">
@@ -51,6 +55,7 @@
                 <input type="text"
                        name="pin"
                        id="pin"
+                       data-required-default="{{if not .AllowNoPin}}1{{else}}0{{end}}"
                        class="pin-input {{if .Form.FieldErrors.pin}}error-input{{end}}"
                        {{if not .AllowNoPin}}required{{end}}
                        maxlength="{{.PinSize}}"

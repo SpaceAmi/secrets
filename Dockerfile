@@ -32,8 +32,10 @@ FROM umputun/baseimage:scratch-latest
 LABEL org.opencontainers.image.source="https://github.com/umputun/secrets"
 
 COPY --from=build-backend /build/secrets.bin /srv/secrets
-# create /data for sqlite storage (mount a volume here for persistence)
-COPY --from=build-backend /build/tmp /data
+# create /data for sqlite storage owned by app user.
+# on first named-volume mount Docker copies this directory into the volume,
+# so ownership here determines initial write access for non-root runtime.
+COPY --from=build-backend --chown=app:app /build/tmp /data
 ENV SQLITE_FILE=/data/secrets.db
 
 WORKDIR /srv

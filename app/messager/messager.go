@@ -154,7 +154,7 @@ func (p MessageProc) MakeMessage(ctx context.Context, req MsgReq) (result *store
 }
 
 // LoadMessage gets from engine, verifies Message with pin and decrypts content.
-// It also removes accessed messages and invalidate them on multiple wrong pins.
+// Messages are kept until expiration and cleaned by TTL-based cleanup.
 // Message decrypted by this function will be returned naked to consumer.
 func (p MessageProc) LoadMessage(ctx context.Context, key, pin string) (msg *store.Message, err error) {
 	msg, err = p.engine.Load(ctx, key)
@@ -183,9 +183,6 @@ func (p MessageProc) LoadMessage(ctx context.Context, key, pin string) (msg *sto
 
 	// client-side encrypted messages: return data as-is (client handles decryption)
 	if msg.ClientEnc {
-		if rmErr := p.engine.Remove(ctx, key); rmErr != nil {
-			log.Printf("[WARN] failed to remove, %v", rmErr)
-		}
 		return msg, nil
 	}
 
@@ -203,10 +200,6 @@ func (p MessageProc) LoadMessage(ctx context.Context, key, pin string) (msg *sto
 		log.Printf("[WARN] can't decrypt, %v", err)
 		_ = p.engine.Remove(ctx, key)
 		return nil, ErrBadPin
-	}
-
-	if err := p.engine.Remove(ctx, key); err != nil {
-		log.Printf("[WARN] failed to remove, %v", err)
 	}
 
 	// for file messages, prepend !!FILE!! to decrypted result for ParseFileHeader compatibility

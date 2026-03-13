@@ -228,7 +228,7 @@ func TestServer_generateLinkCtrl(t *testing.T) {
 			},
 			expectedStatus: http.StatusOK,
 			checkResponse: func(t *testing.T, body string) {
-				assert.Contains(t, body, "https://example.com/message/")
+				assert.Contains(t, body, "https://example.com/")
 			},
 		},
 		{
@@ -367,7 +367,7 @@ func TestServer_generateLinkCtrl_EmptyPinAllowed(t *testing.T) {
 	srv.generateLinkCtrl(rr, req)
 
 	assert.Equal(t, http.StatusOK, rr.Code)
-	assert.Contains(t, rr.Body.String(), "https://example.com/message/") // link generated
+	assert.Contains(t, rr.Body.String(), "https://example.com/") // link generated
 }
 
 func TestServer_generateLinkCtrl_EmptyPinRejected(t *testing.T) {
@@ -397,6 +397,57 @@ func TestServer_generateLinkCtrl_EmptyPinRejected(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Contains(t, rr.Body.String(), "Pin must be 5 digits long") // error shown
+}
+
+func TestServer_generateLinkCtrl_FileWithoutPinAllowed(t *testing.T) {
+	eng := store.NewInMemory(time.Second)
+	srv, err := New(
+		messager.New(eng, messager.Crypt{Key: "123456789012345678901234567"}, messager.Params{
+			MaxDuration: 10 * time.Hour, MaxPinAttempts: 3,
+		}),
+		"1",
+		Config{
+			PinSize: 5, MaxPinAttempts: 3, MaxExpire: 10 * time.Hour,
+			Protocol: "https", Domain: []string{"example.com"}, AllowNoPin: false, EnableFiles: true,
+		})
+	require.NoError(t, err)
+
+	formData := url.Values{
+		"message":  {"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnop"},
+		"exp":      {"15"},
+		"expUnit":  {"m"},
+		"pin":      {"", "", "", "", ""},
+		"isFile":   {"1"},
+		"fileName": {"secret.txt"},
+		"fileSize": {"1024"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/generate-link", strings.NewReader(formData.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+
+	srv.generateLinkCtrl(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Contains(t, rr.Body.String(), "https://example.com/")
+	assert.Contains(t, rr.Body.String(), "secret.txt")
+}
+
+func TestParseGenerateLinkForm_LargeURLEncoded(t *testing.T) {
+	largeMessage := strings.Repeat("A", 11*1024*1024) // >10MB
+	formData := url.Values{
+		"message": {largeMessage},
+		"exp":     {"15"},
+		"expUnit": {"m"},
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/generate-link", strings.NewReader(formData.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	err := parseGenerateLinkForm(req)
+	require.NoError(t, err)
+	assert.Len(t, req.PostForm.Get("message"), len(largeMessage))
+	assert.Equal(t, "15", req.PostForm.Get("exp"))
+	assert.Equal(t, "m", req.PostForm.Get("expUnit"))
 }
 
 func TestServer_generateLinkCtrl_HTMX(t *testing.T) {
@@ -473,7 +524,7 @@ func TestServer_generateLinkCtrl_HTMX(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, rr.Code)
 		assert.Contains(t, rr.Body.String(), "Secure Link Generated")
-		assert.Contains(t, rr.Body.String(), "https://example.com/message/")
+		assert.Contains(t, rr.Body.String(), "https://example.com/")
 		assert.Contains(t, rr.Body.String(), "id=\"msg-link\"") // verify it's the partial template
 	})
 }
@@ -943,7 +994,7 @@ func TestServer_generateLinkCtrl_MultipleDomain(t *testing.T) {
 		srv.generateLinkCtrl(rr, req)
 
 		assert.Equal(t, http.StatusOK, rr.Code)
-		assert.Contains(t, rr.Body.String(), "https://alt.example.com/message/")
+		assert.Contains(t, rr.Body.String(), "https://alt.example.com/")
 	})
 
 	t.Run("falls back to first domain when disallowed", func(t *testing.T) {
@@ -962,7 +1013,7 @@ func TestServer_generateLinkCtrl_MultipleDomain(t *testing.T) {
 		srv.generateLinkCtrl(rr, req)
 
 		assert.Equal(t, http.StatusOK, rr.Code)
-		assert.Contains(t, rr.Body.String(), "https://example.com/message/")
+		assert.Contains(t, rr.Body.String(), "https://example.com/")
 	})
 }
 
@@ -999,8 +1050,8 @@ func TestServer_IPv6LinkGeneration(t *testing.T) {
 		srv.generateLinkCtrl(rr, req)
 
 		assert.Equal(t, http.StatusOK, rr.Code)
-		assert.Contains(t, rr.Body.String(), "https://[::1]/message/", "IPv6 without port should be bracketed")
-		assert.NotContains(t, rr.Body.String(), "https://::1/message/", "Should not have unbracketed IPv6")
+		assert.Contains(t, rr.Body.String(), "https://[::1]/", "IPv6 without port should be bracketed")
+		assert.NotContains(t, rr.Body.String(), "https://::1/", "Should not have unbracketed IPv6")
 	})
 
 	t.Run("IPv6 with non-standard port stays bracketed", func(t *testing.T) {
@@ -1019,7 +1070,7 @@ func TestServer_IPv6LinkGeneration(t *testing.T) {
 		srv.generateLinkCtrl(rr, req)
 
 		assert.Equal(t, http.StatusOK, rr.Code)
-		assert.Contains(t, rr.Body.String(), "https://[::1]:8080/message/", "IPv6 with non-standard port should keep port and brackets")
+		assert.Contains(t, rr.Body.String(), "https://[::1]:8080/", "IPv6 with non-standard port should keep port and brackets")
 	})
 
 	t.Run("IPv6 without port gets bracketed", func(t *testing.T) {
@@ -1038,7 +1089,7 @@ func TestServer_IPv6LinkGeneration(t *testing.T) {
 		srv.generateLinkCtrl(rr, req)
 
 		assert.Equal(t, http.StatusOK, rr.Code)
-		assert.Contains(t, rr.Body.String(), "https://[2001:db8::1]/message/", "IPv6 without brackets should be bracketed")
+		assert.Contains(t, rr.Body.String(), "https://[2001:db8::1]/", "IPv6 without brackets should be bracketed")
 	})
 
 	t.Run("IPv6 edge case - unbracketed with port", func(t *testing.T) {
@@ -1157,17 +1208,17 @@ func TestServer_URLConstruction(t *testing.T) {
 		{
 			name:        "normal key",
 			messageKey:  "68cb14f4-e2767ae5-ef7b-492f-9456-25d3e998074f",
-			expectedURL: "https://example.com/message/68cb14f4-e2767ae5-ef7b-492f-9456-25d3e998074f",
+			expectedURL: "https://example.com/68cb14f4-e2767ae5-ef7b-492f-9456-25d3e998074f",
 		},
 		{
 			name:        "key with spaces (hypothetical)",
 			messageKey:  "test key with spaces",
-			expectedURL: "https://example.com/message/test%20key%20with%20spaces",
+			expectedURL: "https://example.com/test%20key%20with%20spaces",
 		},
 		{
 			name:        "key with special chars (hypothetical)",
 			messageKey:  "test+key&with=special?chars",
-			expectedURL: "https://example.com/message/test+key&with=special%3Fchars",
+			expectedURL: "https://example.com/test+key&with=special%3Fchars",
 		},
 	}
 
@@ -1180,7 +1231,7 @@ func TestServer_URLConstruction(t *testing.T) {
 			msgURL := (&url.URL{
 				Scheme: protocol,
 				Host:   validatedHost,
-				Path:   path.Join("/message", tt.messageKey),
+				Path:   path.Join("/", tt.messageKey),
 			}).String()
 
 			assert.Equal(t, tt.expectedURL, msgURL)
@@ -1436,7 +1487,7 @@ func TestServer_loadMessageCtrl_FileDownload(t *testing.T) {
 		assert.Empty(t, rr.Header().Get("Content-Disposition")) // no download headers
 	})
 
-	t.Run("file message is one-time only", func(t *testing.T) {
+	t.Run("file message remains available until expiration", func(t *testing.T) {
 		msg, err := srv.messager.MakeFileMessage(t.Context(), messager.FileRequest{
 			Duration:    time.Hour,
 			Pin:         "12345",
@@ -1459,12 +1510,13 @@ func TestServer_loadMessageCtrl_FileDownload(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rr.Code)
 		assert.Equal(t, "fake pdf content", rr.Body.String())
 
-		// second access fails
+		// second access succeeds as well
 		req2 := httptest.NewRequest(http.MethodPost, "/load-message", strings.NewReader(formData.Encode()))
 		req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr2 := httptest.NewRecorder()
 		srv.loadMessageCtrl(rr2, req2)
-		assert.Contains(t, rr2.Body.String(), "error")
+		assert.Equal(t, http.StatusOK, rr2.Code)
+		assert.Equal(t, "fake pdf content", rr2.Body.String())
 	})
 }
 

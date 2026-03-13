@@ -3,7 +3,15 @@ BRANCH=$(subst /,-,$(B))
 GITREV=$(shell git describe --abbrev=7 --always --tags)
 REV=$(GITREV)-$(BRANCH)-$(shell date +%Y%m%d-%H:%M:%S)
 
-.PHONY: build test lint race coverage docker docker-push run-dev clean info help e2e-setup e2e e2e-ui
+.PHONY: dev prod build-bin build test lint race coverage docker docker-push run-dev clean info help e2e-setup e2e e2e-ui
+
+dev:
+	cd .. && docker build -t ligno-secrets:dev -f secrets/Dockerfile ./secrets
+
+prod:
+	cd .. && docker build -t ligno-secrets:prod -f secrets/Dockerfile ./secrets
+
+build-bin: build
 
 build: info
 	cd app && go build -ldflags "-X main.revision=$(REV) -s -w" -o ../secrets
@@ -63,4 +71,3 @@ help:
 	@echo "  e2e-setup   - install playwright browsers"
 	@echo "  e2e         - run e2e tests (headless)"
 	@echo "  e2e-ui      - run e2e tests with visible browser"
-

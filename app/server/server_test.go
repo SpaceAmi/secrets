@@ -61,11 +61,11 @@ func TestServer_saveAndLoadMemory(t *testing.T) {
 		Message string
 	}{Key: respLoad.Key, Message: "my secret message"}, respLoad)
 
-	// second load should fail
+	// second load should still work until expiration
 	resp, err = client.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
-	assert.Equal(t, 400, resp.StatusCode)
+	assert.Equal(t, 200, resp.StatusCode)
 }
 
 func TestServer_saveAndLoadSQLite(t *testing.T) {
@@ -133,11 +133,11 @@ func TestServer_saveAndLoadSQLite(t *testing.T) {
 		Message string
 	}{Key: respLoad.Key, Message: "my secret message"}, respLoad)
 
-	// second load should fail
+	// second load should still work until expiration
 	resp, err = client.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
-	assert.Equal(t, 400, resp.StatusCode)
+	assert.Equal(t, 200, resp.StatusCode)
 }
 
 func TestServer_saveAndManyPinAttempt(t *testing.T) {
@@ -406,7 +406,7 @@ func TestServer_getMessageCtrl(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, "test secret", resp["message"])
 		}},
-		{name: "invalid pin returns 400 when key not found", key: msg.Key, pin: "99999", expectedStatusCode: 400},
+		{name: "invalid pin returns 417 while key remains valid", key: msg.Key, pin: "99999", expectedStatusCode: 417},
 		{name: "non-existent key", key: "badkey", pin: "12345", expectedStatusCode: 400},
 	}
 

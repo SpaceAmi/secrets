@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"io/fs"
 	"net"
 	"net/http"
@@ -154,30 +155,72 @@ func (s Server) generateLinkCtrl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// handle text message (existing logic)
-	err := r.ParseForm()
+	// parse x-www-form-urlencoded without net/http's default 10MB ParseForm cap.
+	// request size is already bounded by rest.SizeLimit middleware.
+	err := parseGenerateLinkForm(r)
 	if err != nil {
+		if isBodyTooLargeErr(err) {
+			s.render(w, http.StatusOK, "error.tmpl.html", errorTmpl, "payload too large")
+			return
+		}
 		s.render(w, http.StatusOK, "error.tmpl.html", errorTmpl, err.Error())
 		return
 	}
 
-	form := createMsgForm{
+	form, pin, pinIsEmpty, expDuration := s.makeCreateMsgForm(r)
+
+	if !form.Valid() {
+		s.renderInvalidCreateMsgForm(w, r, form)
+		return
+	}
+
+	allowEmptyPin := pinIsEmpty && (s.cfg.AllowNoPin || form.IsFile)
+	msg, err := s.messager.MakeMessage(r.Context(), messager.MsgReq{
+		Duration:      expDuration,
+		Message:       form.Message,
+		Pin:           pin,
+		ClientEnc:     true, // UI always uses client-side encryption
+		AllowEmptyPin: allowEmptyPin,
+	})
+	if err != nil {
+		s.render(w, http.StatusOK, "secure-link.tmpl.html", errorTmpl, err.Error())
+		return
+	}
+
+	log.Printf("[INFO] created message %s, type=text, size=%d, exp=%s, ip=%s",
+		msg.Key, len(form.Message), msg.Exp.Format(time.RFC3339), GetHashedIP(r))
+	s.renderSecureLink(w, r, msg.Key, form)
+}
+
+// makeCreateMsgForm parses and validates /generate-link form fields.
+func (s Server) makeCreateMsgForm(r *http.Request) (form createMsgForm, pin string, pinIsEmpty bool, expDuration time.Duration) {
+	form = createMsgForm{
 		Message: r.PostForm.Get(msgKey),
 		ExpUnit: r.PostForm.Get(expUnitKey),
 		MaxExp:  humanDuration(s.cfg.MaxExpire),
 	}
 
-	pinValues := r.Form["pin"]
-	pin := strings.Join(pinValues, "")
-	pinIsEmpty := pin == ""
+	isFileUpload := r.PostForm.Get("isFile") == "1" || strings.EqualFold(r.PostForm.Get("isFile"), "true")
+	form.IsFile = isFileUpload
+	if isFileUpload {
+		form.FileName = r.PostForm.Get("fileName")
+		if fileSize := r.PostForm.Get("fileSize"); fileSize != "" {
+			if n, convErr := strconv.ParseInt(fileSize, 10, 64); convErr == nil && n > 0 {
+				form.FileSize = n
+			}
+		}
+	}
 
-	// validate PIN: skip validation if AllowNoPin and PIN is empty, otherwise require valid digits
+	pinValues := r.Form["pin"]
+	pin = strings.Join(pinValues, "")
+	pinIsEmpty = pin == ""
+
 	if !pinIsEmpty {
 		if pinErr := validatePIN(pin, pinValues, s.cfg.PinSize); pinErr != nil {
 			form.AddFieldError(pinKey, pinErr.Error())
 		}
 	}
-	if pinIsEmpty && !s.cfg.AllowNoPin {
+	if pinIsEmpty && !s.cfg.AllowNoPin && !isFileUpload {
 		form.AddFieldError(pinKey, fmt.Sprintf("Pin must be %d digits long", s.cfg.PinSize))
 	}
 
@@ -194,37 +237,49 @@ func (s Server) generateLinkCtrl(w http.ResponseWriter, r *http.Request) {
 		form.AddFieldError(expKey, "Expire must be a number")
 	}
 	form.Exp = expInt
-	expDuration := duration(expInt, r.PostFormValue(expUnitKey))
-
+	expDuration = duration(expInt, r.PostFormValue(expUnitKey))
 	form.CheckField(validator.MaxDuration(expDuration, s.cfg.MaxExpire), expKey, "Expire must be less than "+humanDuration(s.cfg.MaxExpire))
 
-	if !form.Valid() {
-		data := s.newTemplateData(r, form)
+	return form, pin, pinIsEmpty, expDuration
+}
 
-		// return 400 for htmx to handle with hx-target-400
-		if r.Header.Get("HX-Request") == "true" {
-			s.render(w, http.StatusBadRequest, "home.tmpl.html", mainTmpl, data)
-		} else {
-			s.render(w, http.StatusOK, "home.tmpl.html", mainTmpl, data)
+// renderInvalidCreateMsgForm renders /generate-link validation errors with HTMX-aware status.
+func (s Server) renderInvalidCreateMsgForm(w http.ResponseWriter, r *http.Request, form createMsgForm) {
+	data := s.newTemplateData(r, form)
+	if r.Header.Get("HX-Request") == "true" {
+		s.render(w, http.StatusBadRequest, "home.tmpl.html", mainTmpl, data)
+		return
+	}
+	s.render(w, http.StatusOK, "home.tmpl.html", mainTmpl, data)
+}
+
+// parseGenerateLinkForm parses form values for /generate-link while supporting bodies above 10MB.
+func parseGenerateLinkForm(r *http.Request) error {
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-www-form-urlencoded") {
+		rawBody, err := io.ReadAll(r.Body)
+		if err != nil {
+			return fmt.Errorf("read form body: %w", err)
 		}
-		return
+		values, err := url.ParseQuery(string(rawBody))
+		if err != nil {
+			return fmt.Errorf("parse urlencoded form: %w", err)
+		}
+		r.PostForm = values
+		r.Form = values
+		return nil
 	}
-
-	msg, err := s.messager.MakeMessage(r.Context(), messager.MsgReq{
-		Duration:      expDuration,
-		Message:       form.Message,
-		Pin:           pin,
-		ClientEnc:     true, // UI always uses client-side encryption
-		AllowEmptyPin: s.cfg.AllowNoPin && pinIsEmpty,
-	})
-	if err != nil {
-		s.render(w, http.StatusOK, "secure-link.tmpl.html", errorTmpl, err.Error())
-		return
+	if err := r.ParseForm(); err != nil {
+		return fmt.Errorf("parse form: %w", err)
 	}
+	return nil
+}
 
-	log.Printf("[INFO] created message %s, type=text, size=%d, exp=%s, ip=%s",
-		msg.Key, len(form.Message), msg.Exp.Format(time.RFC3339), GetHashedIP(r))
-	s.renderSecureLink(w, r, msg.Key, form)
+func isBodyTooLargeErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "post too large") || strings.Contains(msg, "request body too large")
 }
 
 // renderSecureLink renders the secure link page with the generated URL
@@ -246,7 +301,7 @@ func (s Server) renderSecureLink(w http.ResponseWriter, r *http.Request, key str
 	msgURL := (&url.URL{
 		Scheme: s.cfg.Protocol,
 		Host:   validatedHost,
-		Path:   path.Join("/message", key),
+		Path:   path.Join("/", key),
 	}).String()
 
 	// pass form data for file info display in template
@@ -735,9 +790,20 @@ func (s Server) isValidSecretLink(link string) bool {
 		return false
 	}
 
-	// check path starts with /message/
-	if !strings.HasPrefix(parsed.Path, "/message/") {
+	// accept legacy /message/<key> links
+	if strings.HasPrefix(parsed.Path, "/message/") {
+		return true
+	}
+
+	// accept short links /<12-char base62 key>
+	short := strings.TrimPrefix(parsed.Path, "/")
+	if len(short) != 12 || strings.Contains(short, "/") {
 		return false
+	}
+	for _, ch := range short {
+		if (ch < '0' || ch > '9') && (ch < 'A' || ch > 'Z') && (ch < 'a' || ch > 'z') {
+			return false
+		}
 	}
 
 	return true

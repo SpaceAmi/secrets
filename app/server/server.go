@@ -225,6 +225,8 @@ func (s Server) routes() http.Handler {
 		// generate-link requires HTMX (JavaScript) to ensure client-side encryption
 		webGroup.With(RequireHTMX).HandleFunc("POST /generate-link", s.generateLinkCtrl)
 		webGroup.HandleFunc("GET /message/{key}", s.showMessageViewCtrl)
+		// support short links like /<key> for direct secret access
+		webGroup.HandleFunc("GET /{key}", s.showMessageViewCtrl)
 		webGroup.HandleFunc("POST /load-message", s.loadMessageCtrl)
 		webGroup.HandleFunc("POST /theme", s.themeToggleCtrl)
 		webGroup.HandleFunc("POST /copy-feedback", s.copyFeedbackCtrl)
