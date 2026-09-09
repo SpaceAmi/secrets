@@ -566,7 +566,7 @@ func TestServer_ThemeToggle(t *testing.T) {
 	// test theme toggle from auto (default) to light
 	req, err := http.NewRequest("POST", ts.URL+"/theme", http.NoBody)
 	require.NoError(t, err)
-	req.AddCookie(&http.Cookie{Name: "theme", Value: "auto"})
+	req.AddCookie(&http.Cookie{Name: "theme", Value: "auto", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	resp, err := client.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
@@ -581,7 +581,7 @@ func TestServer_ThemeToggle(t *testing.T) {
 	// test theme toggle from light to dark
 	req, err = http.NewRequest("POST", ts.URL+"/theme", http.NoBody)
 	require.NoError(t, err)
-	req.AddCookie(&http.Cookie{Name: "theme", Value: "light"})
+	req.AddCookie(&http.Cookie{Name: "theme", Value: "light", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	resp, err = client.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
@@ -594,7 +594,7 @@ func TestServer_ThemeToggle(t *testing.T) {
 	// test theme toggle from dark to light
 	req, err = http.NewRequest("POST", ts.URL+"/theme", http.NoBody)
 	require.NoError(t, err)
-	req.AddCookie(&http.Cookie{Name: "theme", Value: "dark"})
+	req.AddCookie(&http.Cookie{Name: "theme", Value: "dark", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	resp, err = client.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()

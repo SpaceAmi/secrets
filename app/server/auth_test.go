@@ -54,14 +54,14 @@ func TestServer_isAuthenticated(t *testing.T) {
 
 	t.Run("invalid cookie returns false", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
-		req.AddCookie(&http.Cookie{Name: authCookieName, Value: "invalid-token"})
+		req.AddCookie(&http.Cookie{Name: authCookieName, Value: "invalid-token", HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode})
 		assert.False(t, srv.isAuthenticated(req))
 	})
 
 	t.Run("valid cookie returns true", func(t *testing.T) {
 		token := srv.generateSessionToken()
 		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
-		req.AddCookie(&http.Cookie{Name: authCookieName, Value: token})
+		req.AddCookie(&http.Cookie{Name: authCookieName, Value: token, HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode})
 		assert.True(t, srv.isAuthenticated(req))
 	})
 
@@ -87,7 +87,7 @@ func TestServer_isAuthenticated(t *testing.T) {
 		time.Sleep(10 * time.Millisecond) // wait for expiration
 
 		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
-		req.AddCookie(&http.Cookie{Name: authCookieName, Value: token})
+		req.AddCookie(&http.Cookie{Name: authCookieName, Value: token, HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode})
 		assert.False(t, shortSrv.isAuthenticated(req))
 	})
 }

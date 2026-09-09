@@ -794,7 +794,7 @@ func TestServer_newTemplateData(t *testing.T) {
 	})
 
 	t.Run("with theme cookie", func(t *testing.T) {
-		req.AddCookie(&http.Cookie{Name: "theme", Value: "dark"})
+		req.AddCookie(&http.Cookie{Name: "theme", Value: "dark", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 		data := srv.newTemplateData(req, nil)
 
 		assert.Equal(t, "dark", data.Theme)

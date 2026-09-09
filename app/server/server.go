@@ -155,7 +155,7 @@ func (s Server) Run(ctx context.Context) error {
 		<-ctx.Done()
 		if httpServer != nil {
 			// graceful shutdown with 10 second timeout
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 			defer cancel()
 			if shutdownErr := httpServer.Shutdown(shutdownCtx); shutdownErr != nil {
 				log.Printf("[ERROR] failed to gracefully shutdown http server: %v", shutdownErr)

@@ -425,8 +425,9 @@ func (s Server) loadMessageCtrl(w http.ResponseWriter, r *http.Request) {
 		}
 		// non-HTMX request (from client-side JS with fetch) - return blob for decryption
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(msg.Data)
+		_, _ = w.Write(msg.Data) // #nosec G705 -- encrypted payload is returned as text/plain with nosniff for client-side decryption.
 		log.Printf("[INFO] accessed message %s, type=client-enc, status=200 (success), ip=%s", form.Key, GetHashedIP(r))
 		return
 	}
@@ -461,7 +462,7 @@ func (s Server) loadMessageCtrl(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", strconv.Itoa(len(msg.Data)-dataStart))
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(msg.Data[dataStart:])
+		_, _ = w.Write(msg.Data[dataStart:]) // #nosec G705 -- file payload is served as attachment/octet-stream with nosniff.
 		log.Printf("[INFO] accessed message %s, type=file, status=200 (success), ip=%s", form.Key, GetHashedIP(r))
 		return
 	}
@@ -581,12 +582,13 @@ func (s Server) themeToggleCtrl(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// set cookie (client-side storage)
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- Secure follows configured protocol; HTTP mode is supported for local/non-TLS deployments.
 		Name:     "theme",
 		Value:    nextTheme,
 		Path:     "/",
 		MaxAge:   365 * 24 * 60 * 60, // 1 year
-		HttpOnly: false,              // allow JS access for immediate UI update if needed
+		HttpOnly: true,
+		Secure:   s.cfg.Protocol == "https",
 		SameSite: http.SameSiteLaxMode,
 	})
 

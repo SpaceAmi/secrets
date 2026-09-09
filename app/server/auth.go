@@ -68,7 +68,7 @@ func (s Server) loginCtrl(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[INFO] login success, ip=%s", GetHashedIP(r))
 	// authentication successful, set session cookie
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- Secure follows configured protocol; HTTP mode is supported for local/non-TLS deployments.
 		Name:     authCookieName,
 		Value:    s.generateSessionToken(),
 		Path:     "/",
@@ -89,7 +89,7 @@ func (s Server) loginCtrl(w http.ResponseWriter, r *http.Request) {
 // GET /logout
 func (s Server) logoutCtrl(w http.ResponseWriter, r *http.Request) {
 	// clear the auth cookie
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- Secure follows configured protocol to match the login cookie being cleared.
 		Name:     authCookieName,
 		Value:    "",
 		Path:     "/",
